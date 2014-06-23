@@ -11,7 +11,6 @@ namespace KVTree
     /// <typeparam name="V">System.Type for Value</typeparam>
     public class KVTree<K, V> : IDictionary<K, V>
         where K : IComparable
-        where V : IComparable
     {
         #region Properties, Fields and Constructors
         private int count;
@@ -38,20 +37,16 @@ namespace KVTree
             get
             {
                 V val = default(V);
-
-                try
-                {
-                    if (TryGetValue(key, out val))
-                        return val;
+                if (!TryGetValue(key, out val))
                     throw new KeyNotFoundException("Key not found");
-                }
-                catch (KeyNotFoundException knfe)
-                {
-                    Console.WriteLine(knfe.Message);
-                    return val;
-                }
+
+                return val;
             }
-            set { recursiveSearch(root, new KeyValuePair<K, V>(key, default(V))).swapNodeData(new Node<KeyValuePair<K, V>>(new KeyValuePair<K, V>(key, value))); }
+            set 
+            { 
+                recursiveSearch(new KeyValuePair<K, V>(key, default(V)))
+                    .swapNodeData(new Node<KeyValuePair<K, V>>(new KeyValuePair<K, V>(key, value))); 
+            }
         }
 
         /// <summary>
@@ -62,7 +57,6 @@ namespace KVTree
             get
             {
                 List<K> KeyCollection = (from entities in recursiveGetAll(root, new Stack<KeyValuePair<K, V>>()) select entities.Key).ToList();
-                KeyCollection.Sort();
                 return KeyCollection;
             }
         }
@@ -75,7 +69,6 @@ namespace KVTree
             get
             {
                 List<V> ValueCollection = (from entities in recursiveGetAll(root, new Stack<KeyValuePair<K, V>>()) select entities.Value).ToList();
-                ValueCollection.Sort();
                 return ValueCollection;
             }
         }
@@ -85,7 +78,6 @@ namespace KVTree
         /// </summary>
         public KVTree()
         {
-            root = null;
             count = 0;
             comparer = new Comparer<K>();
         }
@@ -97,13 +89,25 @@ namespace KVTree
         /// </summary>
         /// <param name="inputKey"></param>
         /// <param name="inputValue"></param>
-        public void Add(K inputKey, V inputValue) { Add(new KeyValuePair<K, V>(inputKey, inputValue)); }
+        public void Add(K inputKey, V inputValue) 
+        {
+            if (inputKey == null)
+                throw new ArgumentNullException("Null Key cannot be added to tree");
+
+            Add(new KeyValuePair<K, V>(inputKey, inputValue)); 
+        }
 
         /// <summary>
         /// Adds new node with corresponding KeyValuePair
         /// </summary>
         /// <param name="newPair"></param>
-        public void Add(KeyValuePair<K, V> newPair) { Add(new Node<KeyValuePair<K, V>>(newPair)); }
+        public void Add(KeyValuePair<K, V> newPair) 
+        {
+            if (newPair.Key == null)
+                throw new ArgumentNullException("Null Key found within KeyValuePair.\nNull Key cannot be added to tree");
+
+            Add(new Node<KeyValuePair<K, V>>(newPair)); 
+        }
 
         /// <summary>
         /// Adds Node to tree
@@ -111,48 +115,50 @@ namespace KVTree
         /// <param name="item">Node to be added</param>
         public void Add(Node<KeyValuePair<K, V>> item)
         {
-            if (!(root is Node<KeyValuePair<K, V>>))
+            if (root == null)
             {
                 root = item;
                 count++;
             }
-            else recursiveAdd(root, item);
+            else recursiveAdd(item);
         }
 
         /// <summary>
+        /// Calls recursiveAdd using the root node
+        /// </summary>
+        /// <param name="item">Node to be added</param>
+        private void recursiveAdd(Node<KeyValuePair<K, V>> item) { recursiveAdd(root, item); }
+
+        /// <summary>
         /// Recursively iterates through tree to find next available position to place new node
-        /// Throws exception if key already exists within tree
+        /// Throws ArgumentException if key already exists within tree
         /// </summary>
         /// <param name="node">Current node</param>
         /// <param name="item">Node to be added</param>
         private void recursiveAdd(Node<KeyValuePair<K, V>> node, Node<KeyValuePair<K, V>> item)
         {
-            try
+            if (comparer.Equals(node.Data.Key, item.Data.Key))
+                throw new ArgumentException("KeyValuePair cannot be added: Key already exists.");
+            else if (comparer.Compare(node.Data.Key, item.Data.Key) == -1)
             {
-                if (comparer.Equals(node.Data.Key, item.Data.Key))
-                    throw new Exception("KeyValuePair cannot be added: Key already exists.");
-                else if (comparer.Compare(node.Data.Key, item.Data.Key) == -1)
+                if (node.Right == null)
                 {
-                    if (!(node.Right is Node<KeyValuePair<K, V>>))
-                    {
-                        item.Parent = node;
-                        node.Right = item;
-                        count++;
-                    }
-                    else recursiveAdd(node.Right, item);
+                    item.Parent = node;
+                    node.Right = item;
+                    count++;
                 }
-                else
-                {
-                    if (!(node.Left is Node<KeyValuePair<K, V>>))
-                    {
-                        item.Parent = node;
-                        node.Left = item;
-                        count++;
-                    }
-                    else recursiveAdd(node.Left, item);
-                }
+                else recursiveAdd(node.Right, item);
             }
-            catch (Exception ex) { Console.WriteLine(ex.Message); }
+            else
+            {
+                if (node.Left == null)
+                {
+                    item.Parent = node;
+                    node.Left = item;
+                    count++;
+                }
+                else recursiveAdd(node.Left, item);
+            }
         }
         #endregion
 
@@ -182,12 +188,13 @@ namespace KVTree
         /// <returns>True if node is successfully removed or false if node is not found</returns>
         public bool Remove(K key)
         {
-            Node<KeyValuePair<K, V>> nodeToRemove = recursiveSearch(root, new KeyValuePair<K, V>(key, default(V)));
-            if (!(nodeToRemove is Node<KeyValuePair<K, V>>)) return false;
+            Node<KeyValuePair<K, V>> nodeToRemove = recursiveSearch(new KeyValuePair<K, V>(key, default(V)));
+            if (nodeToRemove == null)
+                throw new ArgumentNullException("Key does not exist in tree and cannot be removed");
 
-            if (!(nodeToRemove.Right is Node<KeyValuePair<K, V>>) && !(nodeToRemove.Left is Node<KeyValuePair<K, V>>))
+            if (nodeToRemove.Right == null && nodeToRemove.Left == null)
             {
-                if (nodeToRemove.Parent is Node<KeyValuePair<K, V>>)
+                if (nodeToRemove.Parent != null)
                 {
                     nodeToRemove.deleteNodeNoChildren(nodeToRemove.Parent);
                     nodeToRemove = null;
@@ -196,9 +203,9 @@ namespace KVTree
             }
             else
             {
-                if (!(nodeToRemove.Right is Node<KeyValuePair<K, V>>) && nodeToRemove.Left is Node<KeyValuePair<K, V>>)
+                if (nodeToRemove.Right == null && nodeToRemove.Left != null)
                 {
-                    if (nodeToRemove.Parent is Node<KeyValuePair<K, V>>)
+                    if (nodeToRemove.Parent != null)
                     {
                         nodeToRemove.deleteNodeLeftChild(nodeToRemove.Parent);
                         nodeToRemove = null;
@@ -209,9 +216,9 @@ namespace KVTree
                         root = root.Left;
                     }
                 }
-                else if (nodeToRemove.Right is Node<KeyValuePair<K, V>> && !(nodeToRemove.Left is Node<KeyValuePair<K, V>>))
+                else if (nodeToRemove.Right != null && nodeToRemove.Left == null)
                 {
-                    if (nodeToRemove.Parent is Node<KeyValuePair<K, V>>)
+                    if (nodeToRemove.Parent != null)
                     {
                         nodeToRemove.deleteNodeRightChild(nodeToRemove.Parent);
                         nodeToRemove = null;
@@ -224,15 +231,17 @@ namespace KVTree
                 }
                 else
                 {
-                    Node<KeyValuePair<K, V>> logicallyClosestNode = (new Random().Next(0, 2) == 1) ? logicalSuccessor(nodeToRemove) : logicalPredecessor(nodeToRemove);
+                    Node<KeyValuePair<K, V>> logicallyClosestNode = (new Random().Next(0, 2) == 1) ? 
+                        logicalSuccessor(nodeToRemove) : 
+                        logicalPredecessor(nodeToRemove);
 
-                    if (nodeToRemove.Parent is Node<KeyValuePair<K, V>>)
+                    if (nodeToRemove.Parent != null)
                         nodeToRemove.swapNodeData(logicallyClosestNode);
                     else root.swapNodeData(logicallyClosestNode);
 
-                    if (!(logicallyClosestNode.Right is Node<KeyValuePair<K, V>>) && logicallyClosestNode.Left is Node<KeyValuePair<K, V>>)
+                    if (logicallyClosestNode.Right == null && logicallyClosestNode.Left != null)
                         logicallyClosestNode.deleteNodeRightChild(logicallyClosestNode.Parent);
-                    else if (logicallyClosestNode.Right is Node<KeyValuePair<K, V>> && !(logicallyClosestNode.Left is Node<KeyValuePair<K, V>>))
+                    else if (logicallyClosestNode.Right != null && logicallyClosestNode.Left == null)
                         logicallyClosestNode.deleteNodeLeftChild(logicallyClosestNode.Parent);
                 }
             }
@@ -257,8 +266,12 @@ namespace KVTree
         /// </summary>
         /// <param name="item">Pair to match to</param>
         /// <returns>True if the specified KeyValuePair is found</returns>
-        public bool Contains(KeyValuePair<K, V> item) { return recursiveSearch(root, item) is Node<KeyValuePair<K, V>>; }
+        public bool Contains(KeyValuePair<K, V> item) { return recursiveSearch(item) != null; }
 
+        private Node<KeyValuePair<K, V>> recursiveSearch(KeyValuePair<K, V> item)
+        {
+            return recursiveSearch(root, item);
+        }
         /// <summary>
         /// Recursively steps through the tree to find the specified KeyValuePair
         /// </summary>
@@ -271,13 +284,13 @@ namespace KVTree
                 return node;
             else if (comparer.Compare(node.Data.Key, item.Key) == -1)
             {
-                if (!(node.Right is Node<KeyValuePair<K, V>>))
+                if (node.Right == null)
                     return null;
                 else return recursiveSearch(node.Right, item);
             }
             else
             {
-                if (!(node.Left is Node<KeyValuePair<K, V>>))
+                if (node.Left == null)
                     return null;
                 else return recursiveSearch(node.Left, item);
             }
@@ -292,7 +305,7 @@ namespace KVTree
         {
             Node<KeyValuePair<K, V>> successor = node.Right;
 
-            while (successor.Left is Node<KeyValuePair<K, V>>)
+            while (successor.Left != null)
                 successor = successor.Left;
 
             return successor;
@@ -307,7 +320,7 @@ namespace KVTree
         {
             Node<KeyValuePair<K, V>> predecessor = node.Left;
 
-            while (predecessor.Right is Node<KeyValuePair<K, V>>)
+            while (predecessor.Right != null)
                 predecessor = predecessor.Right;
 
             return predecessor;
@@ -321,9 +334,9 @@ namespace KVTree
         /// <returns>true if Key is found or false otherwise</returns>
         public bool TryGetValue(K key, out V value)
         {
-            Node<KeyValuePair<K, V>> node = recursiveSearch(root, new KeyValuePair<K, V>(key, default(V)));
+            Node<KeyValuePair<K, V>> node = recursiveSearch(new KeyValuePair<K, V>(key, default(V)));
 
-            if (!(node is Node<KeyValuePair<K, V>>))
+            if (node == null)
             {
                 value = default(V);
                 return false;
@@ -344,19 +357,15 @@ namespace KVTree
         /// <param name="arrayIndex">Index of array at which copying starts</param>
         public void CopyTo(KeyValuePair<K, V>[] array, int arrayIndex)
         {
-            try
-            {
-                if (!(array is KeyValuePair<K, V>[]))
-                    throw new ArgumentNullException();
-                if (arrayIndex < 0 || arrayIndex > array.Length)
-                    throw new ArgumentOutOfRangeException();
-                if (array.Length - arrayIndex < count)
-                    throw new ArgumentException();
+            if (array == null)
+                throw new ArgumentNullException();
+            if (arrayIndex < 0 || arrayIndex > array.Length)
+                throw new ArgumentOutOfRangeException();
+            if (array.Length - arrayIndex < count)
+                throw new ArgumentException();
 
-                foreach (KeyValuePair<K, V> pair in this)
-                    array[arrayIndex++] = pair;
-            }
-            catch (Exception ex) { Console.WriteLine(ex.Message); }
+            foreach (KeyValuePair<K, V> pair in this)
+                array[arrayIndex++] = pair;
         }
 
         /// <summary>
@@ -365,10 +374,15 @@ namespace KVTree
         /// <returns>current iteration through the tree</returns>
         public IEnumerator<KeyValuePair<K, V>> GetEnumerator()
         {
-            Stack<KeyValuePair<K, V>> nodeStack = recursiveGetAll(root, new Stack<KeyValuePair<K, V>>());
+            Stack<KeyValuePair<K, V>> nodeStack = recursiveGetAll(new Stack<KeyValuePair<K, V>>());
 
             foreach (KeyValuePair<K, V> entity in nodeStack)
                 yield return entity;
+        }
+
+        private Stack<KeyValuePair<K, V>> recursiveGetAll(Stack<KeyValuePair<K, V>> nodeStack)
+        {
+            return recursiveGetAll(root, nodeStack);
         }
 
         /// <summary>
@@ -377,11 +391,11 @@ namespace KVTree
         /// <param name="node">node to begin collecting from</param>
         /// <param name="nodeStack">collection of indexable nodes to be returned</param>
         /// <returns></returns>
-        public Stack<KeyValuePair<K, V>> recursiveGetAll(Node<KeyValuePair<K, V>> node, Stack<KeyValuePair<K, V>> nodeStack)
+        private Stack<KeyValuePair<K, V>> recursiveGetAll(Node<KeyValuePair<K, V>> node, Stack<KeyValuePair<K, V>> nodeStack)
         {
-            if (node.Left != null) recursiveGetAll(node.Left, nodeStack);
-            nodeStack.Push(node.Data);
             if (node.Right != null) recursiveGetAll(node.Right, nodeStack);
+            nodeStack.Push(node.Data);
+            if (node.Left != null) recursiveGetAll(node.Left, nodeStack);
             return nodeStack;
         }
 
@@ -450,7 +464,11 @@ namespace KVTree
             public Node<T> Parent
             {
                 get { return parent; }
-                set { if (!(parent is Node<T>)) parent = value; }
+                set 
+                {
+                    if (parent == null) parent = value;
+                    else throw new FieldAccessException("Parent node cannot be set unless Parent is null");
+                }
             }
 
             /// <summary>
@@ -460,7 +478,11 @@ namespace KVTree
             public Node<T> Left
             {
                 get { return left; }
-                set { if (!(left is Node<T>)) left = value; }
+                set 
+                {
+                    if (left == null) left = value;
+                    else throw new FieldAccessException("Left node cannot be set unless Left is null");
+                }
             }
 
             /// <summary>
@@ -470,7 +492,11 @@ namespace KVTree
             public Node<T> Right
             {
                 get { return right; }
-                set { if (!(right is Node<T>)) right = value; }
+                set 
+                {
+                    if (right == null) right = value;
+                    else throw new FieldAccessException("Right node cannot be set unless Left is null");
+                }
             }
 
             /// <summary>
@@ -478,17 +504,6 @@ namespace KVTree
             /// </summary>
             /// <param name="item">Instantiates the content of the new node</param>
             public Node(T item) { data = item; }
-
-            /// <summary>
-            /// Creates a new, empty node with no connection to the tree
-            /// </summary>
-            public Node()
-            {
-                data = default(T);
-                parent = null;
-                left = null;
-                right = null;
-            }
 
             /// <summary>
             /// Sets the value of the data field in the current node to the value of the data field in the source node
@@ -513,7 +528,7 @@ namespace KVTree
             /// <param name="parentNode">parent of current node</param>
             public void deleteNodeRightChild(Node<T> parentNode = null)
             {
-                if (parentNode is Node<T>)
+                if (parentNode != null)
                 {
                     if (parentNode.right == this)
                         parentNode.right = this.right;
@@ -530,7 +545,7 @@ namespace KVTree
             /// <param name="parentNode">parent of current node</param>
             public void deleteNodeLeftChild(Node<T> parentNode = null)
             {
-                if (parentNode is Node<T>)
+                if (parentNode != null)
                 {
                     if (parentNode.right == this)
                         parentNode.right = this.left;
